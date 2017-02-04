@@ -392,31 +392,29 @@ let dispatch buffer (type a) : a Query_protocol.t -> a =
     with_typer buffer @@ fun pipeline typer ->
     let source = Mpipeline.input_source pipeline in
     let pos = Msource.get_lexing_pos tr source pos in
-    let env =
-      match Mtyper.node_at tr typer pos with
-      | (env, _) :: _ -> env
-      | [] -> Mtyper.get_env typer
+    let env, _ = Mbrowse.leaf_node (Mtyper.node_at tr typer pos) in
+    let query =
+      let re = Str.regexp "[ |\t]+" in
+      let pos,neg = Str.split re query |> List.partition ~f:(fun s->s.[0]<>'-') in
+      let prepare s =
+        Longident.parse @@
+        if s.[0] = '-' || s.[0] = '+'
+        then String.sub s ~pos:1 ~len:(String.length s - 1)
+        else s
+      in
+      Polarity_search.build_query env
+        ~positive:(List.map pos ~f:prepare)
+        ~negative:(List.map neg ~f:prepare)
     in
-    Printtyp.wrap_printing_env env ~verbosity @@ fun () ->
-    let re = Str.regexp "[ |\t]+" in
-    let pos, neg =
-      Str.split re query |>
-      List.partition ~f:(fun s -> s.[0] <> '-')
-    in
-    let prepare s =
-      Longident.parse @@
-      if s.[0] = '-' || s.[0] = '+'
-      then String.sub s ~pos:1 ~len:(String.length s - 1)
-      else s
-    in
-    let pos = List.map pos ~f:prepare and neg = List.map neg ~f:prepare in
-    let query = Polarity_search.build_query ~positive:pos ~negative:neg env in
-    let dirs = Polarity_search.directories env in
+    let config = Mpipeline.final_config pipeline in
+    let global_modules = Mconfig.global_modules config in
+    let dirs = Polarity_search.directories ~global_modules env in
     ignore (Format.flush_str_formatter ());
     let entries =
       Polarity_search.execute_query query env dirs |>
       List.sort ~cmp:compare |>
-      List.map ~f:(fun (cost, path, v) ->
+      Printtyp.wrap_printing_env env ~verbosity @@ fun () ->
+      List.map ~f:(fun (_, path, v) ->
           Printtyp.path Format.str_formatter path;
           let name = Format.flush_str_formatter () in
           Printtyp.type_scheme env Format.str_formatter v.Types.val_type;

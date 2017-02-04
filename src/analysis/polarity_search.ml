@@ -91,7 +91,7 @@ let build_query ~positive ~negative env =
     neg_fun = !neg_fun; pos_fun = !pos_fun;
   }
 
-let directories env =
+let directories ~global_modules env =
   let rec explore lident env =
     let add_module name _ md l =
       match md.Types.md_type with
@@ -102,20 +102,36 @@ let directories env =
     in
     Env.fold_modules add_module (Some lident) env []
   in
-  Env.fold_modules (fun name _ _ l ->
-    let lident = Longident.Lident name in
-    Trie (name, lident, lazy (explore lident env)) :: l
-  ) None env []
+  List.fold_left ~f:(fun l name ->
+      let lident = Longident.Lident name in
+      match Env.lookup_module ~load:true lident env with
+      | exception _ -> l
+      | _ -> Trie (name, lident, lazy (explore lident env)) :: l
+    ) ~init:[] global_modules
+  (*Env.fold_modules (fun name _ _ l ->
+      ignore (seen name);
+      let lident = Longident.Lident name in
+      Trie (name, lident, lazy (explore lident env)) :: l
+    ) None env []*)
 
 let execute_query query env dirs =
   let direct dir acc =
     Env.fold_values (fun _ path desc acc ->
-      match match_query env query desc.Types.val_type with
-      | Some cost -> (cost, path, desc) :: acc
-      | None -> acc
-    ) dir env acc
+        match match_query env query desc.Types.val_type with
+        | Some cost -> (cost, path, desc) :: acc
+        | None -> acc
+      ) dir env acc
   in
-  let rec recurse acc (Trie (_, dir, lazy children)) =
-    List.fold_left ~f:recurse ~init:(direct (Some dir) acc) children
+  let rec recurse acc (Trie (_, dir, children)) =
+    match
+      ignore (Env.lookup_module ~load:true dir env);
+      Lazy.force children
+    with
+    | children ->
+      List.fold_left ~f:recurse ~init:(direct (Some dir) acc) children
+    | exception Not_found ->
+      Logger.notify "polarity-search" "%S not found"
+        (String.concat ~sep:"." (Longident.flatten dir));
+      acc
   in
   List.fold_left dirs ~init:(direct None []) ~f:recurse
