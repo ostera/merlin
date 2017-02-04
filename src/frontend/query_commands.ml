@@ -388,6 +388,44 @@ let dispatch buffer (type a) : a Query_protocol.t -> a =
     in
     { Compl. entries ; context = `Unknown }
 
+  | Polarity_search (query, pos) ->
+    with_typer buffer @@ fun pipeline typer ->
+    let source = Mpipeline.input_source pipeline in
+    let pos = Msource.get_lexing_pos tr source pos in
+    let env =
+      match Mtyper.node_at tr typer pos with
+      | (env, _) :: _ -> env
+      | [] -> Mtyper.get_env typer
+    in
+    Printtyp.wrap_printing_env env ~verbosity @@ fun () ->
+    let re = Str.regexp "[ |\t]+" in
+    let pos, neg =
+      Str.split re query |>
+      List.partition ~f:(fun s -> s.[0] <> '-')
+    in
+    let prepare s =
+      Longident.parse @@
+      if s.[0] = '-' || s.[0] = '+'
+      then String.sub s ~pos:1 ~len:(String.length s - 1)
+      else s
+    in
+    let pos = List.map pos ~f:prepare and neg = List.map neg ~f:prepare in
+    let query = Polarity_search.build_query ~positive:pos ~negative:neg env in
+    let dirs = Polarity_search.directories env in
+    ignore (Format.flush_str_formatter ());
+    let entries =
+      Polarity_search.execute_query query env dirs |>
+      List.sort ~cmp:compare |>
+      List.map ~f:(fun (cost, path, v) ->
+          Printtyp.path Format.str_formatter path;
+          let name = Format.flush_str_formatter () in
+          Printtyp.type_scheme env Format.str_formatter v.Types.val_type;
+          let desc = Format.flush_str_formatter () in
+          {Compl. name; kind = `Value; desc; info = "" }
+        )
+    in
+    { Compl. entries ; context = `Unknown }
+
   | Document (patho, pos) ->
     with_typer buffer @@ fun pipeline typer ->
     let local_defs = Mtyper.get_typedtree typer in

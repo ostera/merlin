@@ -360,6 +360,28 @@ let all_commands = [
     end
   ;
 
+  command "search-by-polarity"
+    ~doc:"search-by-polarity -position pos -query ident\n\t\
+          TODO"
+    ~spec: [
+      ("-position",
+       "<position> Position to complete",
+       marg_position (fun pos (query,_pos) -> (query,pos))
+      );
+      ("-query",
+       "<string> Query of the form TODO",
+       Marg.param "string" (fun query (_prefix,pos) -> (query,pos))
+      );
+    ]
+    ~default:("",`None)
+    begin fun buffer (query,pos) ->
+      match pos with
+      | `None -> failwith "-position <pos> is mandatory"
+      | #Msource.position as pos ->
+        run buffer (Query_protocol.Polarity_search (query,pos))
+    end
+  ;
+
   command "shape"
     ~doc:"shape -position pos\n\t\
           TODO"
