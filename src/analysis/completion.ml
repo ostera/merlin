@@ -553,13 +553,11 @@ let branch_complete buffer ?get_doc ?target_type prefix = function
     | Method_call (obj,_,_) -> complete_methods ~env ~prefix obj
     | Pattern    { Typedtree.pat_desc = Typedtree.Tpat_record _ ; pat_type = t }
     | Expression { Typedtree.exp_desc = Typedtree.Texp_record _ ; exp_type = t } ->
-      prerr_endline "COMPLETE RECORD";
       let is_label =
         try match t.Types.desc with
           | Types.Tconstr (p, _, _) ->
             (match (Env.find_type p env).Types.type_kind with
              | Types.Type_record (labels, _) ->
-               List.iter (fun l -> prerr_endline (Ident.name l.Types.ld_id)) labels;
                `Declaration (t, labels)
              | _ -> `Maybe)
           | _ -> `Maybe
@@ -569,7 +567,6 @@ let branch_complete buffer ?get_doc ?target_type prefix = function
       complete_prefix ?get_doc ?target_type ~prefix ~is_label buffer
         (env,node) branch
     | Record_field (parent, lbl, loc) ->
-      prerr_endline "COMPLETE RECORD FIELD";
       let prefix, _is_label = Longident.(keep_suffix @@ parse prefix) in
       let snap = Btype.snapshot () in
       let is_label = match lbl.Types.lbl_all with
