@@ -68,6 +68,7 @@ let make tr ?for_completion config source =
   let config = Mconfig.normalize tr config in
   let reader = lazy (
     let result = Mreader.parse tr ?for_completion config source in
+    let config = Mreader.apply_directives config result.Mreader.parsetree in
     let config = Mconfig.normalize tr config in
     result, config
   ) in
